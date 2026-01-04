@@ -69,9 +69,28 @@ def load_data(symbol, start, end):
 
 df = load_data(ticker, start_date, end_date)
 
-if df.empty or "Adj Close" not in df.columns:
-    st.error(f"No data found for `{ticker}`.")
+# ============================================================
+# DATA VALIDATION & PRICE COLUMN SELECTION
+# ============================================================
+
+if df.empty:
+    st.error(
+        f"No data returned for `{ticker}`.\n\n"
+        "Try examples: AAPL, MSFT, NVDA, TSLA, SPY, BTC-USD, ^GSPC"
+    )
     st.stop()
+
+# Prefer Adjusted Close, fall back to Close
+if "Adj Close" in df.columns:
+    PRICE_COL = "Adj Close"
+elif "Close" in df.columns:
+    PRICE_COL = "Close"
+else:
+    st.error(
+        f"Data for `{ticker}` does not contain price columns."
+    )
+    st.stop()
+
 # ============================================================
 # PART 6 — QUANT METRICS
 # ============================================================
