@@ -1,5 +1,6 @@
 # ============================================================
-# PART 1 — IMPORTS & APP CONFIG
+# KATTA WEALTH QUANT
+# Live Market Data • Real Quant Methods • Robust Ticker Handling
 # ============================================================
 
 import streamlit as st
@@ -9,119 +10,199 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 import datetime as dt
 from dataclasses import dataclass
+
 # ============================================================
-# PART 2 — BRANDING & SAFETY
+# PART 1 — APP CONFIG & BRANDING
 # ============================================================
 
-st.set_page_config(page_title="Katta Wealth Quant", layout="wide")
+st.set_page_config(
+    page_title="Katta Wealth Quant",
+    layout="wide"
+)
 
 st.title("📊 Katta Wealth Quant")
-st.caption("Live market data · College-level quantitative math · Education first")
+st.caption("Live market data · Quantitative finance · Education first")
 
 with st.expander("⚠️ Educational Use Only", expanded=True):
     st.warning(
-        "This app is for EDUCATIONAL PURPOSES ONLY.\n\n"
-        "It does NOT provide financial advice or investment recommendations. "
-        "All outputs are based on historical data and simplified academic models."
+        "This application is for EDUCATIONAL PURPOSES ONLY.\n\n"
+        "It does NOT provide financial advice, investment recommendations, "
+        "or trading signals. All models are simplified academic examples."
     )
+
 # ============================================================
-# PART 3 — NAVIGATION
+# PART 2 — NAVIGATION
 # ============================================================
 
 page = st.sidebar.radio(
     "Navigate",
     ["Dashboard", "Quant Math", "Features"]
 )
+
 # ============================================================
-# PART 4 — STOCK INPUT
+# PART 3 — TICKER INPUT (ANY SYMBOL)
 # ============================================================
 
-st.sidebar.subheader("📈 Stock Input")
+st.sidebar.subheader("📈 Market Input")
 
 ticker_raw = st.sidebar.text_input(
-    "Enter ticker (AAPL, MSFT, TSLA, SPY, BTC-USD)",
-    value="AAPL"
+    "Enter ANY ticker",
+    value="AAPL",
+    help="Examples: AAPL, TSLA, SPY, BTC-USD, ^GSPC, INFY, RELIANCE.NS, 7203.T"
 )
 
-ticker = ticker_raw.upper().strip().replace(" ", "")
+ticker = ticker_raw.upper().strip()
 
 start_date = st.sidebar.date_input(
-    "Start Date", value=dt.date(2019, 1, 1)
+    "Start Date",
+    value=dt.date(2019, 1, 1)
 )
 
 end_date = st.sidebar.date_input(
-    "End Date", value=dt.date.today()
+    "End Date",
+    value=dt.date.today()
 )
 
 forecast_days = st.sidebar.slider(
-    "Forecast Days", 30, 365, 90
+    "Forecast Horizon (days)",
+    30, 365, 90
 )
-# ============================================================
-# PART 5 — DATA LOADING
-# ============================================================
-
-@st.cache_data
-def load_data(symbol, start, end):
-    df = yf.download(symbol, start=start, end=end, progress=False)
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    return df
-
-df = load_data(ticker, start_date, end_date)
 
 # ============================================================
-# DATA VALIDATION & PRICE COLUMN SELECTION
+# PART 4 — ROBUST DATA LOADING (PRODUCTION SAFE)
 # ============================================================
+
+@st.cache_data(show_spinner=False)
+def load_market_data(symbol, start, end):
+    try:
+        df = yf.download(
+            symbol,
+            start=start,
+            end=end,
+            auto_adjust=False,
+            progress=False,
+            threads=False
+        )
+
+        # Flatten MultiIndex columns if present
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        # Drop rows where everything is NaN
+        df = df.dropna(how="all")
+
+        return df
+
+    except Exception:
+        return pd.DataFrame()
+
+
+df = load_market_data(ticker, start_date, end_date)
 
 if df.empty:
     st.error(
-        f"No data returned for `{ticker}`.\n\n"
-        "Try examples: AAPL, MSFT, NVDA, TSLA, SPY, BTC-USD, ^GSPC"
+        f"No market data returned for `{ticker}`.\n\n"
+        "This ticker may not exist on Yahoo Finance.\n"
+        "Examples that work:\n"
+        "AAPL, MSFT, SPY, BTC-USD, ^GSPC, INFY, RELIANCE.NS"
     )
     st.stop()
 
-# Prefer Adjusted Close, fall back to Close
+# ============================================================
+# PART 5 — PRICE COLUMN RESOLUTION (CRITICAL FIX)
+# ============================================================
+
 if "Adj Close" in df.columns:
     PRICE_COL = "Adj Close"
 elif "Close" in df.columns:
     PRICE_COL = "Close"
 else:
-    st.error(
-        f"Data for `{ticker}` does not contain price columns."
-    )
+    st.error(f"Price data unavailable for `{ticker}`.")
     st.stop()
 
+st.sidebar.caption(f"Using price column: `{PRICE_COL}`")
+
 # ============================================================
-# PART 6 — QUANT METRICS
+# PART 6 — CORE QUANT METRICS
 # ============================================================
 
-df["Log_Return"] = np.log(df["Adj Close"] / df["Adj Close"].shift(1))
-df["MA_20"] = df["Adj Close"].rolling(20).mean()
-df["MA_50"] = df["Adj Close"].rolling(50).mean()
-df["MA_200"] = df["Adj Close"].rolling(200).mean()
-
-volatility = df["Log_Return"].std() * np.sqrt(252)
-
-cagr = (
-    (df["Adj Close"].iloc[-1] / df["Adj Close"].iloc[0]) **
-    (252 / len(df)) - 1
-)
-# ============================================================
-# PART 7 — REGRESSION FORECAST
-# ============================================================
+df["Log_Return"] = np.log(df[PRICE_COL] / df[PRICE_COL].shift(1))
+df["MA_20"] = df[PRICE_COL].rolling(20).mean()
+df["MA_50"] = df[PRICE_COL].rolling(50).mean()
+df["MA_200"] = df[PRICE_COL].rolling(200).mean()
 
 df_clean = df.dropna()
 
-t = np.arange(len(df_clean)).reshape(-1, 1)
-price = df_clean["Adj Close"].values
+volatility = df_clean["Log_Return"].std() * np.sqrt(252)
 
-model = LinearRegression()
-model.fit(t, price)
+cagr = (
+    (df_clean[PRICE_COL].iloc[-1] / df_clean[PRICE_COL].iloc[0]) **
+    (252 / len(df_clean)) - 1
+)
+
+# ============================================================
+# PART 7 — REGRESSION FORECAST (DETERMINISTIC)
+# ============================================================
+
+t = np.arange(len(df_clean)).reshape(-1, 1)
+price_series = df_clean[PRICE_COL].values
+
+reg_model = LinearRegression()
+reg_model.fit(t, price_series)
 
 future_t = np.arange(len(df_clean), len(df_clean) + forecast_days).reshape(-1, 1)
-forecast_price = model.predict(future_t)
+forecast_prices = reg_model.predict(future_t)
+
 # ============================================================
-# PART 8 — DASHBOARD
+# PART 8 — RETURN STATISTICS & RISK METRICS
+# ============================================================
+
+returns = df_clean["Log_Return"]
+
+mu_daily = returns.mean()
+sigma_daily = returns.std()
+
+mu_annual = mu_daily * 252
+sigma_annual = sigma_daily * np.sqrt(252)
+
+RISK_FREE_RATE = 0.02
+
+sharpe_ratio = (mu_annual - RISK_FREE_RATE) / sigma_annual
+
+downside = returns[returns < 0]
+downside_vol = downside.std() * np.sqrt(252)
+
+sortino_ratio = (
+    (mu_annual - RISK_FREE_RATE) / downside_vol
+    if downside_vol > 0 else np.nan
+)
+
+VaR_95 = np.percentile(returns, 5)
+CVaR_95 = returns[returns <= VaR_95].mean()
+
+# ============================================================
+# PART 9 — GEOMETRIC BROWNIAN MOTION (STOCHASTIC)
+# ============================================================
+
+def simulate_gbm(S0, mu, sigma, T=1, steps=252, simulations=500):
+    dt = T / steps
+    paths = np.zeros((steps, simulations))
+    paths[0] = S0
+
+    for i in range(1, steps):
+        Z = np.random.standard_normal(simulations)
+        paths[i] = paths[i-1] * np.exp(
+            (mu - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * Z
+        )
+
+    return paths
+
+
+S0 = df_clean[PRICE_COL].iloc[-1]
+gbm_paths = simulate_gbm(S0, mu_annual, sigma_annual, simulations=1000)
+
+# ============================================================
+# PART 10 — DASHBOARD
 # ============================================================
 
 if page == "Dashboard":
@@ -129,22 +210,31 @@ if page == "Dashboard":
     st.header(f"{ticker} — Quant Dashboard")
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Last Price", f"${df['Adj Close'].iloc[-1]:.2f}")
+    c1.metric("Last Price", f"{S0:.2f}")
     c2.metric("CAGR", f"{cagr:.2%}")
-    c3.metric("Volatility", f"{volatility:.2%}")
+    c3.metric("Volatility", f"{sigma_annual:.2%}")
+
+    r1, r2, r3 = st.columns(3)
+    r1.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
+    r2.metric("Sortino Ratio", f"{sortino_ratio:.2f}")
+    r3.metric("VaR (95%)", f"{VaR_95:.2%}")
 
     st.subheader("Price & Moving Averages")
-    st.line_chart(df[["Adj Close", "MA_20", "MA_50", "MA_200"]])
+    st.line_chart(df_clean[[PRICE_COL, "MA_20", "MA_50", "MA_200"]])
 
-    st.subheader("Trend Projection")
-    combined = pd.concat(
-        [df_clean["Adj Close"].reset_index(drop=True),
-         pd.Series(forecast_price)],
+    st.subheader("Deterministic Trend Projection")
+    trend_df = pd.concat(
+        [df_clean[PRICE_COL].reset_index(drop=True),
+         pd.Series(forecast_prices)],
         axis=0
     )
-    st.line_chart(combined)
+    st.line_chart(trend_df)
+
+    st.subheader("Monte Carlo Simulation (GBM)")
+    st.line_chart(pd.DataFrame(gbm_paths[:, :50]))
+
 # ============================================================
-# PART 9 — COLLEGE CALCULUS MATH
+# PART 11 — QUANT MATH (COLLEGE LEVEL)
 # ============================================================
 
 if page == "Quant Math":
@@ -153,19 +243,18 @@ if page == "Quant Math":
 
     st.latex(r"P(t)")
     st.latex(r"r(t) = \ln\left(\frac{P(t)}{P(t-1)}\right)")
-    st.latex(r"r(t) \approx \frac{d}{dt} \ln(P(t))")
+    st.latex(r"r(t) \approx \frac{d}{dt}\ln(P(t))")
 
     st.latex(r"P(t) = \beta_0 + \beta_1 t")
     st.latex(
-        r"\min_{\beta_0,\beta_1} \sum_{i=1}^{n} "
-        r"(P_i - (\beta_0 + \beta_1 t_i))^2"
+        r"\min_{\beta_0,\beta_1}\sum_{i=1}^{n}(P_i-(\beta_0+\beta_1 t_i))^2"
     )
 
-    st.latex(r"\sigma = \sqrt{252} \cdot \sqrt{E[(r - \mu)^2]}")
-    st.latex(r"\frac{dP}{dt} = kP")
-    st.latex(r"P(t) = P_0 e^{kt}")
+    st.latex(r"\sigma = \sqrt{252}\sqrt{E[(r-\mu)^2]}")
+    st.latex(r"dS_t = \mu S_t dt + \sigma S_t dW_t")
+
 # ============================================================
-# PART 10 — FEATURE REGISTRY (1000+ FEATURES)
+# PART 12 — FEATURE SYSTEM (1000+ FEATURES)
 # ============================================================
 
 @dataclass
@@ -173,169 +262,33 @@ class Feature:
     id: str
     name: str
     category: str
-    description: str
     enabled: bool = False
 
 
 def generate_features():
     features = []
-
     for i in range(1, 1001):
-        if i <= 200:
-            cat = "Quant Analytics"
-        elif i <= 400:
-            cat = "Risk Models"
-        elif i <= 600:
-            cat = "Forecasting"
-        elif i <= 800:
-            cat = "Education"
-        else:
-            cat = "Compliance & Safety"
-
         features.append(
             Feature(
-                id=f"FEATURE_{i}",
-                name=f"Feature {i}",
-                category=cat,
-                description=f"Auto-generated platform feature #{i}",
-                enabled=(cat in ["Education", "Compliance & Safety"])
+                id=f"F{i}",
+                name=f"Quant Feature {i}",
+                category=[
+                    "Analytics", "Risk", "Forecasting",
+                    "Portfolio", "Education", "Compliance"
+                ][(i - 1) // 167],
+                enabled=(i > 600)
             )
         )
-
     return features
 
 
 ALL_FEATURES = generate_features()
-# ============================================================
-# PART 11 — FEATURE UI
-# ============================================================
 
 if page == "Features":
 
-    st.header("🧩 Platform Features")
+    st.header("🧩 Feature Registry (1000+ Features)")
+    cats = sorted(set(f.category for f in ALL_FEATURES))
+    cat = st.selectbox("Category", cats)
 
-    categories = sorted(set(f.category for f in ALL_FEATURES))
-    selected_category = st.selectbox("Category", categories)
-
-    for f in [x for x in ALL_FEATURES if x.category == selected_category][:25]:
+    for f in [x for x in ALL_FEATURES if x.category == cat][:30]:
         f.enabled = st.checkbox(f.name, value=f.enabled)
-# ============================================================
-# PART 12 — FEATURE EXECUTION
-# ============================================================
-
-def execute_features(features):
-    for f in features:
-        if f.enabled:
-            st.info(f"✅ {f.name} active")
-
-if page == "Dashboard":
-    execute_features(ALL_FEATURES)
-# ============================================================
-# PART 13 — RETURN DISTRIBUTION & STATISTICS
-# ============================================================
-
-returns = df_clean["Log_Return"].dropna()
-
-mu_daily = returns.mean()
-sigma_daily = returns.std()
-
-mu_annual = mu_daily * 252
-sigma_annual = sigma_daily * np.sqrt(252)
-
-skewness = returns.skew()
-kurtosis = returns.kurtosis()
-# ============================================================
-# PART 14 — RISK-ADJUSTED METRICS
-# ============================================================
-
-RISK_FREE_RATE = 0.02  # 2% assumed
-
-sharpe_ratio = (mu_annual - RISK_FREE_RATE) / sigma_annual
-
-downside_returns = returns[returns < 0]
-downside_std = downside_returns.std() * np.sqrt(252)
-
-sortino_ratio = (mu_annual - RISK_FREE_RATE) / downside_std if downside_std > 0 else np.nan
-# ============================================================
-# PART 15 — ROLLING VOLATILITY
-# ============================================================
-
-df_clean["Rolling_Vol_30"] = returns.rolling(30).std() * np.sqrt(252)
-df_clean["Rolling_Vol_90"] = returns.rolling(90).std() * np.sqrt(252)
-# ============================================================
-# PART 16 — VALUE AT RISK & EXPECTED SHORTFALL
-# ============================================================
-
-confidence_level = 0.95
-
-VaR_95 = np.percentile(returns, (1 - confidence_level) * 100)
-
-CVaR_95 = returns[returns <= VaR_95].mean()
-# ============================================================
-# PART 17 — GEOMETRIC BROWNIAN MOTION
-# ============================================================
-
-def simulate_gbm(
-    S0,
-    mu,
-    sigma,
-    T=1,
-    steps=252,
-    simulations=500
-):
-    dt = T / steps
-    paths = np.zeros((steps, simulations))
-    paths[0] = S0
-
-    for t in range(1, steps):
-        Z = np.random.standard_normal(simulations)
-        paths[t] = paths[t-1] * np.exp(
-            (mu - 0.5 * sigma**2) * dt + sigma * np.sqrt(dt) * Z
-        )
-
-    return paths
-# ============================================================
-# PART 18 — MONTE CARLO SIMULATION
-# ============================================================
-
-S0 = df_clean["Adj Close"].iloc[-1]
-
-gbm_paths = simulate_gbm(
-    S0=S0,
-    mu=mu_annual,
-    sigma=sigma_annual,
-    simulations=1000
-)
-
-expected_price_1y = gbm_paths[-1].mean()
-# ============================================================
-# PART 19 — STOCHASTIC VS DETERMINISTIC
-# ============================================================
-
-deterministic_projection = S0 * np.exp(mu_annual)
-
-stochastic_std = gbm_paths[-1].std()
-st.subheader("📉 Quant Risk Metrics")
-
-r1, r2, r3 = st.columns(3)
-r1.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
-r2.metric("Sortino Ratio", f"{sortino_ratio:.2f}")
-r3.metric("VaR (95%)", f"{VaR_95:.2%}")
-
-st.subheader("Rolling Volatility")
-st.line_chart(df_clean[["Rolling_Vol_30", "Rolling_Vol_90"]])
-st.subheader("Monte Carlo Price Simulation (GBM)")
-
-mc_df = pd.DataFrame(gbm_paths[:, :50])
-st.line_chart(mc_df)
-st.divider()
-st.header("Stochastic Differential Equation")
-
-st.latex(
-    r"dS_t = \mu S_t dt + \sigma S_t dW_t"
-)
-
-st.write(
-    "This stochastic differential equation defines Geometric Brownian Motion, "
-    "where dW_t is a Wiener process (Brownian motion)."
-)
