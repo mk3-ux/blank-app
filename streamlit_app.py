@@ -1,7 +1,6 @@
 # ============================================================
 # KATTA WEALTH QUANT
-# Quantitative Finance — Educational Platform
-# Live Market Data + College Calculus Math
+# Live Quant Dashboard — College Calculus Level
 # ============================================================
 
 import streamlit as st
@@ -12,86 +11,71 @@ from sklearn.linear_model import LinearRegression
 import datetime as dt
 
 # ============================================================
-# PART 1 — APP CONFIG & BRANDING
+# PART 1 — CONFIG & BRANDING
 # ============================================================
 
-APP_NAME = "Katta Wealth Quant"
-APP_TAGLINE = "Quantitative insights. Education first. Risk aware."
-
-st.set_page_config(
-    page_title=APP_NAME,
-    layout="wide"
-)
-
-st.title(APP_NAME)
-st.caption(APP_TAGLINE)
+st.set_page_config(page_title="Katta Wealth Quant", layout="wide")
+st.title("📊 Katta Wealth Quant")
+st.caption("Live market data · College-level quantitative math · Education first")
 
 # ============================================================
-# PART 2 — LEGAL & SAFETY NOTICE (MANDATORY)
+# PART 2 — SAFETY NOTICE
 # ============================================================
 
-with st.expander("⚠️ Important Notice", expanded=True):
+with st.expander("⚠️ Educational Use Only", expanded=True):
     st.warning(
-        "This application is for EDUCATIONAL PURPOSES ONLY.\n\n"
-        "It does NOT provide investment advice, recommendations, or predictions. "
-        "All models are simplified academic demonstrations using historical data. "
-        "Markets are uncertain, and past performance does not predict future results."
+        "This app is for EDUCATIONAL PURPOSES ONLY.\n\n"
+        "It does NOT provide financial advice or investment recommendations. "
+        "All outputs are based on historical data and simplified academic models."
     )
 
 # ============================================================
-# PART 3 — APP NAVIGATION
+# PART 3 — NAVIGATION
 # ============================================================
 
-page = st.sidebar.radio(
-    "Navigate",
-    ["Dashboard", "Quant Math"]
-)
+page = st.sidebar.radio("Navigate", ["Dashboard", "Quant Math"])
 
 # ============================================================
-# PART 4 — GLOBAL STOCK SELECTION (LIVE DATA)
+# PART 4 — STOCK INPUT (TYPE ANY SYMBOL)
 # ============================================================
 
-st.sidebar.subheader("📊 Stock Selection")
+st.sidebar.subheader("📈 Stock Input")
 
-POPULAR_STOCKS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META",
-    "NVDA", "TSLA", "SPY", "QQQ"
-]
-
-ticker = st.sidebar.selectbox(
-    "Choose a stock",
-    POPULAR_STOCKS
-)
+ticker = st.sidebar.text_input(
+    "Enter stock ticker (e.g., AAPL, MSFT, TSLA, SPY)",
+    value="AAPL"
+).upper().strip()
 
 start_date = st.sidebar.date_input(
-    "Start Date",
-    value=dt.date(2019, 1, 1)
+    "Start Date", value=dt.date(2019, 1, 1)
 )
 
 end_date = st.sidebar.date_input(
-    "End Date",
-    value=dt.date.today()
+    "End Date", value=dt.date.today()
 )
 
 forecast_days = st.sidebar.slider(
-    "Forecast horizon (days)",
-    min_value=30,
-    max_value=365,
-    value=90
+    "Forecast Days", 30, 365, 90
 )
 
 # ============================================================
-# PART 5 — LIVE DATA INGESTION
+# PART 5 — LOAD & CLEAN LIVE DATA
 # ============================================================
 
 @st.cache_data
-def load_stock_data(symbol, start, end):
-    return yf.download(symbol, start=start, end=end, progress=False)
+def load_data(symbol, start, end):
+    df = yf.download(symbol, start=start, end=end, progress=False)
 
-df = load_stock_data(ticker, start_date, end_date)
+    # 🔴 FIX: Flatten MultiIndex columns if they exist
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
 
-if df.empty:
-    st.error("No data available for this selection.")
+    return df
+
+df = load_data(ticker, start_date, end_date)
+
+if df.empty or "Adj Close" not in df.columns:
+    st.error("Invalid ticker or no data available.")
     st.stop()
 
 # ============================================================
@@ -111,7 +95,7 @@ cagr = (
 )
 
 # ============================================================
-# PART 7 — LINEAR REGRESSION FORECAST
+# PART 7 — REGRESSION FORECAST
 # ============================================================
 
 df_clean = df.dropna()
@@ -125,12 +109,12 @@ future_t = np.arange(len(df_clean), len(df_clean) + forecast_days).reshape(-1, 1
 forecast_price = model.predict(future_t)
 
 # ============================================================
-# PART 8 — DASHBOARD PAGE
+# PART 8 — DASHBOARD
 # ============================================================
 
 if page == "Dashboard":
 
-    st.header(f"📊 {ticker} — Live Quant Dashboard")
+    st.header(f"📊 {ticker} — Quant Dashboard")
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Last Price", f"${df['Adj Close'].iloc[-1]:.2f}")
@@ -150,7 +134,7 @@ if page == "Dashboard":
     )
     st.line_chart(combined)
 
-    with st.expander("View Recent Data"):
+    with st.expander("Recent Data"):
         st.dataframe(df.tail(20))
 
 # ============================================================
@@ -159,67 +143,29 @@ if page == "Dashboard":
 
 if page == "Quant Math":
 
-    st.header("📐 Quantitative Math (College Calculus Level)")
-    st.caption(f"Mathematical framework used for {ticker}")
+    st.header("📐 Quantitative Math (College Calculus)")
+    st.caption(f"Mathematical framework applied to {ticker}")
 
     st.divider()
 
-    st.subheader("1. Price as a Continuous Function")
     st.latex(r"P(t)")
-    st.write(
-        "We model stock price as a continuous function of time "
-        "to apply calculus-based tools."
-    )
+    st.write("Stock price modeled as a continuous function of time.")
 
-    st.divider()
-
-    st.subheader("2. Log Returns and Derivatives")
     st.latex(r"r(t) = \ln\left(\frac{P(t)}{P(t-1)}\right)")
     st.latex(r"r(t) \approx \frac{d}{dt} \ln(P(t))")
 
-    st.write(
-        "Log returns approximate the derivative of the logarithm "
-        "of price with respect to time."
-    )
-
-    st.divider()
-
-    st.subheader("3. Linear Regression via Least Squares Optimization")
     st.latex(r"P(t) = \beta_0 + \beta_1 t")
-
     st.latex(
-        r"\min_{\beta_0, \beta_1} "
-        r"\sum_{i=1}^{n} (P_i - (\beta_0 + \beta_1 t_i))^2"
+        r"\min_{\beta_0,\beta_1} \sum_{i=1}^n "
+        r"(P_i - (\beta_0 + \beta_1 t_i))^2"
     )
 
-    st.write(
-        "The model parameters are found by minimizing squared error. "
-        "This requires taking partial derivatives with respect to each parameter "
-        "and solving the resulting system of equations."
-    )
-
-    st.divider()
-
-    st.subheader("4. Volatility as Variance")
     st.latex(r"\sigma = \sqrt{252} \cdot \sqrt{E[(r - \mu)^2]}")
 
-    st.write(
-        "Volatility measures dispersion of returns and is mathematically "
-        "derived from variance, which is an integral over squared deviations."
-    )
-
-    st.divider()
-
-    st.subheader("5. Exponential Growth & Differential Equations")
     st.latex(r"\frac{dP}{dt} = kP")
     st.latex(r"P(t) = P_0 e^{kt}")
 
-    st.write(
-        "CAGR assumes proportional growth and comes from solving "
-        "a first-order differential equation."
-    )
-
     st.success(
-        "This page exists to ensure mathematical transparency and "
-        "to clarify that models are educational, not predictive guarantees."
+        "All math shown is for educational transparency. "
+        "Models are simplified and not predictive guarantees."
     )
